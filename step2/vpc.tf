@@ -28,4 +28,75 @@ resource "aws_subnet" "private_subnet" {
     }
 }
 
+### internet_gateway ###
+resource "aws_internet_gateway" "igw" {
+    vpc_id = aws_vpc.main.id
+    
+    tags = {
+        name = "terraform-101-igw"
+    }
+}
 
+### eip and nat_gateway ###
+resource "aws_eip" "nat" {
+    domain = "vpc"
+    
+    lifecycle {
+        create_before_destroy = true
+    }
+}
+
+resource "aws_nat_gateway" "nat_gateway" {
+    allocation_id = aws_eip.nat.id
+
+    subnet_id = aws_subnet.public_subnet.id
+    
+    tags = {
+        name = "terraform-101-nat-gateway"
+    }
+}
+### Route Table (public) ###
+resource "aws_route_table" "public" {
+    vpc_id = aws_vpc.main.id
+# 방법 1 라우팅 테이블 리소스 생성 내에서 작성
+    route {
+        cidr_block = "0.0.0.0/0"
+        gateway_id = aws_internet_gateway.igw.id
+    }
+
+    tags = {
+        name = "terraform-101-public-route"
+    }
+}
+
+resource "aws_route_table_association" "route_table_association_public" {
+    subnet_id = aws_subnet.public_subnet.id
+    route_table_id = aws_route_table.public.id
+}
+
+### Route Table (private) ###
+resource "aws_route_table" "private" {
+    vpc_id = aws_vpc.main.id
+   
+    tags = {
+        name = "terraform-101-private-route"
+    }
+}
+
+resource "aws_route_table_association" "route_table_association_private" {
+    subnet_id = aws_subnet.private_subnet.id
+    route_table_id = aws_route_table.private.id
+}
+#방법 2 resorce "aws_route" 를 통해서 외부에서 라우트 생성
+#실제 작동은 차이가 없으나 코드의 생김세가 달라짐
+#확장성을 생각한다면 안에서 만드는것보단 외부로 빼는게 좋음
+
+resource "aws_route" "private_nat" {
+  route_table_id              = aws_route_table.private.id
+  destination_cidr_block      = "0.0.0.0/0"
+  nat_gateway_id              = aws_nat_gateway.nat_gateway.id
+}
+
+#테라폼의 강점
+#plan,apply 를 시행했을때 미리 생성된 리소스를 검사
+#누가 콘솔을 통해서 수정했을경우 내가 원하는 형상내로 다시 복구가 가능함
